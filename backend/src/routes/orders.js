@@ -33,6 +33,9 @@
 
 const express = require("express");
 const { ok,ApiError, wrap } = require("../lib/apiResponse");
+const invalid = (message, details) =>
+  new ApiError(422, "INVALID_ORDER", message, details);
+
 
 function isPlainObject(v) {
   return v !== null && typeof v === "object" && !Array.isArray(v);
@@ -59,9 +62,16 @@ function parseBody(body) {
     merged.set(productId, (merged.get(productId) || 0) + quantity);
   });
 
+  let couponCode = null;
+  if (body.couponCode !== undefined && body.couponCode !== null) {
+    if (typeof body.couponCode !== "string" || body.couponCode === "") {
+      throw invalid("couponCode must be a non-empty string when provided");
+    }
+    couponCode = body.couponCode;
+  }
 
   const lines = [...merged].map(([productId, quantity]) => ({ productId, quantity }));
-  return { lines };
+  return { lines , couponCode };
 }
 function resolveLines(store, lines) {
   const resolved = lines.map(({ productId, quantity }) => {
@@ -86,6 +96,9 @@ function resolveLines(store, lines) {
   }
   return resolved;
 }
+function tenPercentHalfUp(subtotalCents) {
+  return Math.floor((subtotalCents + 5) / 10);
+}
 module.exports = function orderRoutes({ store, couponValidator }) {
   const router = express.Router();
 
@@ -97,6 +110,14 @@ module.exports = function orderRoutes({ store, couponValidator }) {
       resolveLines(store, lines);
 
       let couponApplied = false;
+      if (couponCode !== null) {
+        if (!(await couponValidator.isValid(couponCode))) {
+          throw new ApiError(422, "INVALID_COUPON", `Coupon "${couponCode}" is not valid`, {
+            couponCode,
+          });
+        }
+        couponApplied = true;
+      }
     
 
       const resolved = resolveLines(store, lines);
@@ -110,6 +131,7 @@ module.exports = function orderRoutes({ store, couponValidator }) {
         lineTotalCents: product.priceCents * quantity,
       }));
       const subtotalCents = items.reduce((n, i) => n + i.lineTotalCents, 0);
+      const discountCents = couponApplied ? tenPercentHalfUp(subtotalCents) : 0;
 
       const order = store.saveOrder({
         createdAt: new Date().toISOString(),
@@ -117,8 +139,8 @@ module.exports = function orderRoutes({ store, couponValidator }) {
         couponCode,
         couponApplied,
         subtotalCents,
-     
-        totalCents: subtotalCents 
+        discountCents,
+        totalCents: subtotalCents - discountCents,
       });
 
       ok(res, order, 201);

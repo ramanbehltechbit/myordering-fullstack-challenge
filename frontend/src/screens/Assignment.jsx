@@ -32,11 +32,26 @@ export default function Assignment() {
   const placeOrder = usePlaceOrder();
 
   const { error, isLoading } = placeOrder;
+  const couponRejected = Boolean(error && error.code === "INVALID_COUPON");
  
 
-  
+  let couponStatus = { state: "idle" };
+  if (isLoading && coupon.trim()) {
+    couponStatus = { state: "pending" };
+  } else if (couponRejected) {
+    couponStatus = {
+      state: "rejected",
+      message: `“${(error.details && error.details.couponCode) || coupon}” isn’t a valid promo code.`,
+    };
+  }
+
  
   // TODO: build payload from `lines` (+ coupon) and call placeOrder.mutate(...)
+  const onCouponChange = (value) => {
+    setCoupon(value);
+    if (couponRejected) placeOrder.reset(); 
+  };
+
   const onPlaceOrder = () => {
     placeOrder.mutate(buildOrderPayload(lines, coupon), {
       onSuccess: (created) => {
@@ -71,7 +86,7 @@ export default function Assignment() {
           ) : (
             <>
               <CartPanel disabled={isLoading} />
-              <CouponField value={coupon} onChange={setCoupon} status="idle" />
+              <CouponField value={coupon} onChange={onCouponChange} status={couponStatus}/>
               <button
                 className="asg-btn asg-btn--primary"
                 disabled={lines.length === 0 || isLoading}
@@ -79,7 +94,7 @@ export default function Assignment() {
               >
                 {isLoading ? "Placing order…" : "Place order"}
               </button>
-              {error  && (
+              {error  && !couponRejected && (
                 <p className="asg-panel asg-error" role="alert">
                   {getErrorMessage(error)}
                 </p>
