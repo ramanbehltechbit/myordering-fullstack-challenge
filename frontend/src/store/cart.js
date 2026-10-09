@@ -79,9 +79,8 @@ export const selectCount = (state) =>
   state.lines.reduce((n, l) => n + l.quantity, 0);
 
 /**
- * Subtotal in integer cents.
+ * Subtotal in integer cents. 
  * TODO: implement. Must stay integer — no floating point.
  */
-export const selectSubtotalCents = (state) => {
+export const selectSubtotalCents = (state) => 
   state.lines.reduce((sum, l) => sum + l.priceCents * l.quantity, 0);
-};
